@@ -4,6 +4,7 @@ pub mod elle_rw;
 pub mod traits;
 
 use core::panic;
+pub mod nemesis;
 #[cfg(test)]
 use std::ops::{AddAssign, RangeFrom};
 use std::{fmt, pin::Pin, sync::Arc};
