@@ -1,6 +1,9 @@
 pub mod context;
 pub mod controller;
 pub mod elle_rw;
+pub mod traits;
+
+use core::panic;
 #[cfg(test)]
 use std::ops::{AddAssign, RangeFrom};
 use std::{fmt, pin::Pin, sync::Arc};
@@ -11,11 +14,12 @@ use controller::{DelayStrategy, GeneratorGroupStrategy};
 use log::{debug, trace};
 use tap::Tap;
 use tokio_stream::{Stream, StreamExt as _};
+pub use traits::*;
 
 use crate::{
     history::ErrorType,
     op::Op,
-    utils::{AsyncIter, Counter, DelayAsyncIter, ExtraStreamExt},
+    utils::{Counter, ExtraStreamExt},
 };
 
 /// The content of a generator, a tuple of [`Op`] and [`DelayStrategy`].
@@ -224,11 +228,19 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> Generator<'a, U, ERR> {
 }
 
 #[async_trait::async_trait]
-impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> AsyncIter for Generator<'a, U, ERR> {
-    type Item = U;
+impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorItemGetter for Generator<'a, U, ERR> {
+    type G = Global<'a, U, ERR>;
     fn id(&self) -> u64 {
         self.id.get()
     }
+    fn global(&self) -> &Arc<Self::G> {
+        &self.global
+    }
+}
+
+#[async_trait::async_trait]
+impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> AsyncIter for Generator<'a, U, ERR> {
+    type Item = U;
     async fn next(&mut self) -> Option<Self::Item> {
         let (item, delay) = self
             .seq
@@ -239,6 +251,9 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> AsyncIter for Generator<'a, 
         Some(item)
     }
 }
+
+// use default impl
+impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorIter for Generator<'a, U, ERR> {}
 
 #[async_trait::async_trait]
 impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> DelayAsyncIter for Generator<'a, U, ERR> {
@@ -251,21 +266,26 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> DelayAsyncIter for Generator
     }
 }
 
-pub type GeneratorGroupSeq<'a, U> =
-    dyn DelayAsyncIter<Item = U, DelayType = DelayStrategy> + Send + 'a;
+// Group
+
+/// The dyn type of the sequence item in a generator group.
+pub type GeneratorGroupSeq<'a, U, ERR> =
+    dyn DelayAsyncIter<Item = U, DelayType = DelayStrategy, G = Global<'a, U, ERR>> + Send + 'a;
 
 /// Generator with its ratio. The [`Counter`] indicates how many generations
 /// left until the next generator exchange event.
-pub type GeneratorGroupContent<'a, U> = (Box<GeneratorGroupSeq<'a, U>>, Counter);
+pub type GeneratorGroupContent<'a, U, ERR> = (Box<GeneratorGroupSeq<'a, U, ERR>>, Counter);
 
 /// A group of generators. It provides the flexibility to combine multiple
 /// generators into one.
+///
+/// A [`GeneratorGroup`] is built with sequence of any dyn [`DelayAsyncIter`].
 pub struct GeneratorGroup<'a, U: Send + fmt::Debug = Op, ERR: 'a + Send = ErrorType> {
-    /// the global context
+    /// The global context.
     global: Arc<Global<'a, U, ERR>>,
 
     /// stores all generators and its ratio.
-    gens: Vec<GeneratorGroupContent<'a, U>>,
+    gens: Vec<GeneratorGroupContent<'a, U, ERR>>,
 
     /// the strategy indicates how to choose a generator
     strategy: GeneratorGroupStrategy,
@@ -277,9 +297,9 @@ pub struct GeneratorGroup<'a, U: Send + fmt::Debug = Op, ERR: 'a + Send = ErrorT
 impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
     pub fn new<T>(global: Arc<Global<'a, U, ERR>>, gens: impl IntoIterator<Item = T>) -> Self
     where
-        T: DelayAsyncIter<Item = U, DelayType = DelayStrategy> + Send + 'a,
+        T: DelayAsyncIter<Item = U, DelayType = DelayStrategy, G = Global<'a, U, ERR>> + Send + 'a,
     {
-        Self::new_inner(global, gens.into_iter().map(|x| Box::new(x) as _))
+        Self::new_with_count_inner(global, gens.into_iter().map(|x| (Box::new(x) as _, 1)))
     }
 
     pub fn new_with_count<T>(
@@ -287,28 +307,14 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
         gens: impl IntoIterator<Item = (T, usize)>,
     ) -> Self
     where
-        T: DelayAsyncIter<Item = U, DelayType = DelayStrategy> + Send + 'a,
+        T: DelayAsyncIter<Item = U, DelayType = DelayStrategy, G = Global<'a, U, ERR>> + Send + 'a,
     {
         Self::new_with_count_inner(global, gens.into_iter().map(|(x, c)| (Box::new(x) as _, c)))
     }
 
-    fn new_inner(
-        global: Arc<Global<'a, U, ERR>>,
-        gens: impl IntoIterator<
-            Item = Box<dyn DelayAsyncIter<Item = U, DelayType = DelayStrategy> + Send + 'a>,
-        >,
-    ) -> Self {
-        Self::new_with_count_inner(global, gens.into_iter().map(|x| (x, 1)))
-    }
-
     fn new_with_count_inner(
         global: Arc<Global<'a, U, ERR>>,
-        gens: impl IntoIterator<
-            Item = (
-                Box<dyn DelayAsyncIter<Item = U, DelayType = DelayStrategy> + Send + 'a>,
-                usize,
-            ),
-        >,
+        gens: impl IntoIterator<Item = (Box<GeneratorGroupSeq<'a, U, ERR>>, usize)>,
     ) -> Self {
         let gens: Vec<_> = gens
             .into_iter()
@@ -332,17 +338,14 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
     }
 
     #[inline]
-    pub fn push_generator(
-        &mut self,
-        gen: Box<dyn DelayAsyncIter<Item = U, DelayType = DelayStrategy> + Send>,
-    ) {
+    pub fn push_generator(&mut self, gen: Box<GeneratorGroupSeq<'a, U, ERR>>) {
         self.gens.push((gen, Counter::new(1)));
     }
 
     #[inline]
     pub fn push_generator_with_ratio(
         &mut self,
-        gen: Box<dyn DelayAsyncIter<Item = U, DelayType = DelayStrategy> + Send>,
+        gen: Box<GeneratorGroupSeq<'a, U, ERR>>,
         total: usize,
     ) {
         self.gens.push((gen, Counter::new(total)));
@@ -372,7 +375,7 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
     }
 
     #[inline]
-    pub fn current(&self) -> &GeneratorGroupContent<U> {
+    pub fn current(&self) -> &GeneratorGroupContent<'a, U, ERR> {
         self.gens
             .get(self.selected)
             .expect("selected index should in the range")
@@ -448,12 +451,35 @@ macro_rules! impl_generator_group {
 }
 
 #[async_trait::async_trait]
+impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorItemGetter
+    for GeneratorGroup<'a, U, ERR>
+{
+    type G = Global<'a, U, ERR>;
+    fn id(&self) -> u64 {
+        unimplemented!("generator group do not have single id")
+    }
+    /// Get the global.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the group is empty.
+    fn global(&self) -> &Arc<Global<'a, U, ERR>> {
+        if self.gens.is_empty() {
+            panic!("cannot get global of an empty generator group");
+        } else {
+            self.gens[0].0.global()
+        }
+    }
+}
+
+#[async_trait::async_trait]
 impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> AsyncIter for GeneratorGroup<'a, U, ERR> {
     type Item = U;
-    fn id(&self) -> u64 {
-        unimplemented!("generator group do not have id")
-    }
     impl_generator_group!(next, Option<Self::Item>);
+}
+
+#[async_trait::async_trait]
+impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorIter for GeneratorGroup<'a, U, ERR> {
     impl_generator_group!(next_with_id, Option<(Self::Item, u64)>);
 }
 

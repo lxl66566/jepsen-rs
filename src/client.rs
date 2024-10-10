@@ -5,10 +5,9 @@ use log::{debug, info, trace};
 
 use crate::{
     checker::{elle_rw::ElleRwChecker, Check, CheckOption, SerializableCheckResult},
-    generator::{Generator, GeneratorBuilder, GeneratorGroup, Global, RawGenerator},
+    generator::{Generator, GeneratorBuilder, GeneratorGroup, GeneratorIter, Global, RawGenerator},
     history::HistoryType,
     op::Op,
-    utils::AsyncIter,
 };
 
 /// The interface of a cluster client, needs to be implemented by the external
