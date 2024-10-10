@@ -55,7 +55,7 @@ pub enum NemesisType {
 /// The cluster should be able to execute or resume each nemesis by one nemesis
 /// record.
 #[non_exhaustive]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum NemesisRecord {
     /// do nothing. No-op will not be recorded to history.
     #[default]
@@ -64,7 +64,8 @@ pub enum NemesisRecord {
     Pause(HashSet<ServerId>),
     /// To record the link that has been clogged.
     Net(NetRecord),
-    // Note: Bitflip has no recovery mechanism, so it is not in NemesisRecord.
+    // Note: Bitflip has no recovery mechanism.
+    Bitflip(f64),
 }
 
 impl AsRef<NemesisRecord> for NemesisRecord {
@@ -77,6 +78,17 @@ impl From<NetRecord> for NemesisRecord {
     fn from(record: NetRecord) -> Self {
         Self::Net(record)
     }
+}
+
+/// A [`NemesisRecord`] with its action.
+///
+/// A single [`NemesisRecord`] do not have an intention, the cluster could
+/// execute it or recover it. This enum provides the intention for
+/// [`NemesisRecord`], to instruct the cluster what to do.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NemesisRecordWithAction {
+    Execute(NemesisRecord),
+    Recover(NemesisRecord),
 }
 
 /// The trait for a cluster which could apply nemesis. This trait contains some
@@ -265,7 +277,7 @@ pub trait NemesisCalculator: NemesisCluster {
 #[async_trait::async_trait]
 pub trait NemesisExecutor: NemesisCluster {
     /// Execute the nemesis record.
-    async fn execute(&self, nemesis_record: impl AsRef<NemesisRecord> + Send) {
+    async fn execute_rec(&self, nemesis_record: impl AsRef<NemesisRecord> + Send) {
         match nemesis_record.as_ref() {
             NemesisRecord::Noop => {}
             NemesisRecord::Kill(servers) => {
@@ -281,6 +293,40 @@ pub trait NemesisExecutor: NemesisCluster {
                     v.iter().for_each(|x| self.clog_link_single(*k, *x));
                 }
             }
+            NemesisRecord::Bitflip(_) => {
+                todo!()
+            }
+        }
+    }
+
+    /// Recover from the nemesis record.
+    async fn recover_rec(&self, nemesis_record: impl AsRef<NemesisRecord> + Send) {
+        match nemesis_record.as_ref() {
+            NemesisRecord::Noop => {}
+            NemesisRecord::Kill(servers) => {
+                self.restart(servers.iter().cloned().collect::<Vec<_>>().as_slice())
+                    .await;
+            }
+            NemesisRecord::Pause(servers) => {
+                self.resume(servers.iter().cloned().collect::<Vec<_>>().as_slice())
+                    .await;
+            }
+            NemesisRecord::Net(net_record) => {
+                for (k, v) in net_record.iter() {
+                    v.iter().for_each(|x| self.unclog_link_single(*k, *x));
+                }
+            }
+            NemesisRecord::Bitflip(_) => {
+                todo!()
+            }
+        }
+    }
+
+    /// Execute or recover from the [`NemesisRecordWithAction`].
+    async fn execute(&self, nemesis_r_action: NemesisRecordWithAction) {
+        match nemesis_r_action {
+            NemesisRecordWithAction::Execute(record) => self.execute_rec(record).await,
+            NemesisRecordWithAction::Recover(record) => self.recover_rec(record).await,
         }
     }
 }
@@ -410,12 +456,12 @@ mod tests {
         let cluster = MockCluster::new(3);
         // clog link for 0 -> 1 and 0 -> 2
         cluster
-            .execute(NemesisRecord::Net([(0, [1, 2].into())].into()))
+            .execute_rec(NemesisRecord::Net([(0, [1, 2].into())].into()))
             .await;
         cluster.assert_eq(vec![vec![], vec![0, 2], vec![0, 1]]);
         // clog link for 1 -> 2
         cluster
-            .execute(NemesisRecord::Net([(1, [2].into())].into()))
+            .execute_rec(NemesisRecord::Net([(1, [2].into())].into()))
             .await;
         cluster.assert_eq(vec![vec![], vec![0], vec![0, 1]]);
     }
@@ -424,13 +470,13 @@ mod tests {
     async fn test_partition_halves() {
         let cluster = MockCluster::new(5);
         cluster
-            .execute(cluster.partition_halves((0..=2).collect::<HashSet<_>>()))
+            .execute_rec(cluster.partition_halves((0..=2).collect::<HashSet<_>>()))
             .await;
         cluster.assert_eq(vec![vec![1, 2], vec![0, 2], vec![0, 1], vec![4], vec![3]]);
 
         let cluster = MockCluster::new(6);
         cluster
-            .execute(cluster.partition_halves((0..=2).collect::<HashSet<_>>()))
+            .execute_rec(cluster.partition_halves((0..=2).collect::<HashSet<_>>()))
             .await;
         cluster.assert_eq(vec![
             vec![1, 2],
@@ -445,11 +491,15 @@ mod tests {
     #[madsim::test]
     async fn test_partition_majorities_ring() {
         let cluster = MockCluster::new(4);
-        cluster.execute(cluster.partition_majorities_ring()).await;
+        cluster
+            .execute_rec(cluster.partition_majorities_ring())
+            .await;
         cluster.assert_eq(vec![vec![1, 3], vec![0, 2], vec![1, 3], vec![0, 2]]);
 
         let cluster = MockCluster::new(6);
-        cluster.execute(cluster.partition_majorities_ring()).await;
+        cluster
+            .execute_rec(cluster.partition_majorities_ring())
+            .await;
         cluster.assert_eq(vec![
             vec![1, 3, 5],
             vec![0, 2, 4],
@@ -464,7 +514,7 @@ mod tests {
     async fn test_partition_leader_and_majority() {
         let cluster = MockCluster::new(5);
         cluster
-            .execute(cluster.partition_leader_and_majority().await)
+            .execute_rec(cluster.partition_leader_and_majority().await)
             .await;
         let leader = cluster.get_leader_without_term().await;
         let leader_connections_num = (0..cluster.size())
@@ -479,7 +529,7 @@ mod tests {
     #[madsim::test]
     async fn test_partition_random_n() {
         let cluster = MockCluster::new(6);
-        cluster.execute(cluster.partition_random_n(3)).await;
+        cluster.execute_rec(cluster.partition_random_n(3)).await;
         assert_eq!(cluster.get_all_reachable_nodes(0).len(), 3);
     }
 
@@ -487,7 +537,7 @@ mod tests {
     async fn test_leader_send_to_majority_but_cannot_receive() {
         let cluster = MockCluster::new(5);
         cluster
-            .execute(cluster.leader_send_to_majority_but_cannot_receive().await)
+            .execute_rec(cluster.leader_send_to_majority_but_cannot_receive().await)
             .await;
         let leader = cluster.get_leader_without_term().await;
         let leader_connections_num = (0..cluster.size())
