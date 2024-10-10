@@ -1,6 +1,3 @@
-use std::fmt;
-
-use super::Generator;
 use crate::{nemesis::NemesisType, op::Op};
 
 /// A union of [`NemesisType`] and [`Op`].
@@ -31,11 +28,10 @@ mod test {
     use super::*;
     use crate::{
         generator::{
-            controller::GeneratorGroupStrategy, GeneratorBuilder, GeneratorGroup, Global,
-            RawGenerator,
+            controller::GeneratorGroupStrategy, DelayAsyncIter, Generator, GeneratorBuilder,
+            GeneratorGroup, Global, RawGenerator,
         },
-        nemesis::Nemesis,
-        utils::{DelayAsyncIter, OverflowingAddRange},
+        utils::OverflowingAddRange,
     };
 
     #[derive(Default)]
@@ -64,7 +60,7 @@ mod test {
             .seq(tokio_stream::iter(global.take_seq(2)))
             .build();
         let nemesis = Generator::once(global.clone(), NemesisType::SplitOne(1).into());
-        let group = GeneratorGroup::new_from_generator(global.clone(), [gen, nemesis])
+        let group = GeneratorGroup::new(global.clone(), [gen, nemesis])
             .with_strategy(GeneratorGroupStrategy::Chain);
         let res = group.collect().await;
         assert_eq!(
