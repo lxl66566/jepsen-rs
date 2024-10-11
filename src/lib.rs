@@ -1,9 +1,19 @@
+//! jepsen-rs is a binding to [jepsen](https://github.com/jepsen-io/jepsen),
+//! and more, a jepsen test suit for rust deterministic simulation testing.
+//!
 //! NOTE: Requires java 21 due to https://github.com/jepsen-io/jepsen/issues/585
 
-mod ffi;
-mod generator;
-mod history;
-mod op;
+// for intergration into Xline
+#![warn(clippy::cargo)]
+// madsim rewrite the tokio crate, but it's old and its dependencies are not
+// compatible with other crate.
+#![allow(clippy::multiple_crate_versions)]
+
+pub mod ffi;
+pub mod generator;
+pub mod history;
+pub mod op;
+pub mod utils;
 
 use std::{borrow::Borrow, cell::OnceCell};
 

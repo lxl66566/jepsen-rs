@@ -86,3 +86,18 @@ impl Iterator for ElleRwGenerator {
         Some(self.gen())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::generator::RawGenerator;
+
+    #[test]
+    fn elle_gen_should_work() -> Result<(), Box<dyn std::error::Error>> {
+        let mut gen = ElleRwGenerator::new()?;
+        for _ in 0..GENERATOR_CACHE_SIZE * 2 + 10 {
+            gen.gen();
+        }
+        Ok(())
+    }
+}
