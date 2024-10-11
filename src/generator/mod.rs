@@ -28,20 +28,3 @@ pub trait RawGenerator {
         out
     }
 }
-
-/// The generator. It's a wrapper for the clojure seq and global context.
-pub struct Generator<T: Iterator<Item = U>, U = anyhow::Result<Op>> {
-    /// generator id
-    pub id: GeneratorId,
-    /// A reference to the global context
-    pub global: Arc<Global>,
-    /// The generator sequence
-    pub seq: T,
-}
-
-impl<T: Iterator<Item = anyhow::Result<Op>>> Generator<T> {
-    pub fn new(global: Arc<Global>, seq: T) -> Self {
-        let id = global.get_next_id();
-        Self { id, global, seq }
-    }
-}
