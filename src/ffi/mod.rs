@@ -164,6 +164,16 @@ mod tests {
     use super::*;
     use crate::{cljeval, init_jvm};
 
+    /// We can define a function in namespace, and call it later.
+    #[test]
+    fn test_defn_in_ns() -> Result<(), Box<dyn std::error::Error>> {
+        init_jvm();
+        let _x = cljeval!((defn test [] (str "hello" "world")))?;
+        let y = cljeval!((test))?;
+        print_clj(y);
+        Ok(())
+    }
+
     #[test]
     fn test_serde_between_clojure_and_rust() {
         #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
