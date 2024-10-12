@@ -25,7 +25,7 @@ pub fn print_clj(inst: Instance) {
 /// Convert a Clojure instance `j4rs::Instance` to a rust String
 /// ```
 /// use j4rs::{JvmBuilder, Instance};
-/// use jepsen_rs::{cljeval, utils::{clj_to_string}};
+/// use jepsen_rs::{cljeval, ffi::{clj_to_string}};
 /// let _jvm = JvmBuilder::new().build();
 /// let res = clj_to_string(cljeval!((assoc {:a 1} :b "hello")).unwrap()).unwrap();
 /// assert_eq!(res, "{:a 1, :b \"hello\"}".to_string());
@@ -89,10 +89,10 @@ pub fn equals_clj(a: Instance, b: Instance) -> jResult<bool> {
 /// ```
 /// use j4rs::{JvmBuilder, Instance, InvocationArg};
 /// use jepsen_rs::{CljCore, cljeval};
-/// use jepsen_rs::utils::ffi::{equals, read_edn};
+/// use jepsen_rs::ffi::{equals_clj, read_edn};
 /// let _jvm = JvmBuilder::new().build();
 /// let res = read_edn("(assoc {:a 1} :b \"hello\")").unwrap();
-/// assert!(equals(res, cljeval!({:a 1, :b "hello"}).unwrap()).unwrap());
+/// assert!(equals_clj(res, cljeval!({:a 1, :b "hello"}).unwrap()).unwrap());
 /// ```
 pub fn read_edn(arg: &str) -> j4rs::errors::Result<Instance> {
     with_jvm(|_| cljinvoke!("load-string", arg))
