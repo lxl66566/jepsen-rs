@@ -9,11 +9,14 @@ use crate::{cljevalstr, init_jvm, CljNs, CLOJURE};
 /// The global NsRegister singleton
 pub static NS_REGISTER: LazyLock<NsRegister> = LazyLock::new(NsRegister::new);
 
-/// The NsRegister, should be a
+/// The [`NsRegister`]. This is used to execute any clojure code from user.
+///
+/// If a clojure code is registered, its namespace will be added to clojure
+/// global namespace. [`NsRegister`] provides `get()` function to get the
+/// namespace.
 #[derive(Default, Debug)]
 pub struct NsRegister {
-    /// The registered namespaces. The key is the namespace name, the value is
-    /// the namespace.
+    /// The registered namespaces.
     nss: Mutex<HashSet<String>>,
 }
 
