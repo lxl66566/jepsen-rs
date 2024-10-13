@@ -38,10 +38,6 @@ where
     })
 }
 
-pub fn read_edn(arg: &str) -> j4rs::errors::Result<Instance> {
-    with_jvm(|_| cljinvoke!("load-string", arg))
-}
-
 fn invoke_clojure_java_api(
     method_name: &str,
     inv_args: &[impl Borrow<InvocationArg>],
