@@ -10,6 +10,7 @@
 #![allow(clippy::multiple_crate_versions)]
 
 pub mod checker;
+pub mod client;
 pub mod ffi;
 pub mod generator;
 pub mod history;
