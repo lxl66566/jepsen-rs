@@ -1,6 +1,7 @@
 pub mod context;
 pub mod controller;
 pub mod elle_rw;
+pub mod nemesis;
 pub mod raw_gen;
 pub mod traits;
 
