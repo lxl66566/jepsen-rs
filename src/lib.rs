@@ -14,6 +14,7 @@ pub mod client;
 pub mod ffi;
 pub mod generator;
 pub mod history;
+pub mod nemesis;
 pub mod op;
 pub mod utils;
 
