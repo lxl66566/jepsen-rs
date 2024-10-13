@@ -9,6 +9,7 @@
 // compatible with other crate.
 #![allow(clippy::multiple_crate_versions)]
 
+pub mod checker;
 pub mod ffi;
 pub mod generator;
 pub mod history;
