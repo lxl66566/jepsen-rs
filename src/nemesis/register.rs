@@ -26,7 +26,7 @@ impl Default for NemesisRegisterStrategy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct NemesisRegister {
     queue: VecDeque<NemesisRecord>,
     strategy: NemesisRegisterStrategy,
@@ -42,8 +42,14 @@ impl NemesisRegister {
     }
 
     /// Set the strategy of the nemesis register
+    #[inline]
     pub fn with_strategy(mut self, strategy: NemesisRegisterStrategy) -> Self {
-        self.strategy = strategy;
+        self.set_strategy(strategy);
         self
+    }
+
+    #[inline]
+    pub fn set_strategy(&mut self, strategy: NemesisRegisterStrategy) {
+        self.strategy = strategy;
     }
 }
