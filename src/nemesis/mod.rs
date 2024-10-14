@@ -34,6 +34,9 @@ pub enum SerializableNemesisType {
     Clock,
 }
 
+/// The enum of input Nemeses instruction.
+///
+/// It should be convert to [`NemesisRecord`] to execute.
 #[non_exhaustive]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum NemesisType {
@@ -50,19 +53,24 @@ pub enum NemesisType {
     LeaderSendToMajorityButCannotReceive,
 }
 
-/// This enum is to record nemesis operation.
+/// This enum is to record nemesis operation. It has all infomation of what a
+/// nemesis will do.
 ///
-/// The cluster should be able to execute or resume each nemesis by one nemesis
-/// record.
+/// A single [`NemesisRecord`] do not have an intention, the cluster should be
+/// able to execute or resume each nemesis by one nemesis record.
 #[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum NemesisRecord {
-    /// do nothing. No-op will not be recorded to history.
+    /// do nothing.
+    ///
+    /// No-op will not be recorded to history.
     #[default]
     Noop,
+    /// kill the servers in the cluster.
     Kill(HashSet<ServerId>),
+    /// pause the servers in the cluster.
     Pause(HashSet<ServerId>),
-    /// To record the link that has been clogged.
+    /// To record the link that will be clogged.
     Net(NetRecord),
     // Note: Bitflip has no recovery mechanism, so it is not in NemesisRecord.
 }
@@ -79,14 +87,11 @@ impl From<NetRecord> for NemesisRecord {
     }
 }
 
-/// A [`NemesisRecord`] with its action.
-///
-/// A single [`NemesisRecord`] do not have an intention, the cluster could
-/// execute it or recover it. This enum provides the intention for
-/// [`NemesisRecord`], to instruct the cluster what to do.
-#[derive(Debug, Clone, PartialEq)]
-pub enum NemesisRecordWithAction {
-    Execute(NemesisRecord),
+/// A Union type of [`NemesisType`] and [`NemesisRecord`]. Nemesis Generator
+/// will generate this.
+#[derive(Debug, Clone, PartialEq, derive_more::From)]
+pub enum NemesisGen {
+    Execute(NemesisType),
     Recover(NemesisRecord),
 }
 
@@ -292,9 +297,6 @@ pub trait NemesisExecutor: NemesisCluster {
                     v.iter().for_each(|x| self.clog_link_single(*k, *x));
                 }
             }
-            NemesisRecord::Bitflip(_) => {
-                todo!()
-            }
         }
     }
 
@@ -315,17 +317,6 @@ pub trait NemesisExecutor: NemesisCluster {
                     v.iter().for_each(|x| self.unclog_link_single(*k, *x));
                 }
             }
-            NemesisRecord::Bitflip(_) => {
-                todo!()
-            }
-        }
-    }
-
-    /// Execute or recover from the [`NemesisRecordWithAction`].
-    async fn execute(&self, nemesis_r_action: NemesisRecordWithAction) {
-        match nemesis_r_action {
-            NemesisRecordWithAction::Execute(record) => self.execute_rec(record).await,
-            NemesisRecordWithAction::Recover(record) => self.recover_rec(record).await,
         }
     }
 }
