@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use anyhow::Result;
 use log::{debug, info, trace};
@@ -20,20 +20,20 @@ pub trait ElleRwClusterClient {
 
 /// The interface of a jepsen client.
 #[async_trait::async_trait]
-pub trait Client {
+pub trait Client<U: Send + fmt::Debug = Op> {
     type ERR: Send + 'static;
     /// client received an op, send it to cluster and deal the result. The
     /// history (both invoke and result) will be recorded in this function.
-    async fn handle_op(&'static self, id: u64, op: Op);
+    async fn handle_op(&'static self, id: u64, op: U);
     async fn run(
         &'static self,
-        gen: impl GeneratorIter<Item = Op> + Send,
+        gen: impl GeneratorIter<Item = U> + Send,
     ) -> Result<SerializableCheckResult, Self::ERR>;
-    fn new_generator(&self, n: usize) -> Generator<'static, Op, Self::ERR>;
+    fn new_generator(&self, n: usize) -> Generator<'static, U, Self::ERR>;
 }
 
 /// A client that leads the jepsen test, execute between the generator and the
-/// cluster.
+/// cluster, and record the history file.
 pub struct JepsenClient<EC: ElleRwClusterClient + Send + Sync + 'static> {
     cluster_client: EC,
     pub global: Arc<Global<'static, Op, <Self as Client>::ERR>>,
@@ -71,7 +71,7 @@ impl<EC: ElleRwClusterClient + Send + Sync + 'static> JepsenClient<EC> {
 }
 
 #[async_trait::async_trait]
-impl<EC: ElleRwClusterClient + Send + Sync + 'static> Client for JepsenClient<EC> {
+impl<EC: ElleRwClusterClient + Send + Sync + 'static> Client<Op> for JepsenClient<EC> {
     type ERR = String;
 
     fn new_generator(&self, n: usize) -> Generator<'static, Op, Self::ERR> {
