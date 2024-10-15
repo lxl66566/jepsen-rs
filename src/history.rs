@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -8,7 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     generator::Global,
-    op::{Op, OpFunctionType},
+    nemesis::NemesisGen,
+    op::{Op, OpFunctionType, OpOrNemesisFuncType},
 };
 pub type ErrorType = Vec<String>;
 
@@ -21,7 +23,11 @@ pub type ErrorType = Vec<String>;
 /// FIXME: The deserialization in clojure site will ignore the `:` symbol, that
 /// causes the unknown check result in checker.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SerializableHistory<F = OpFunctionType, ERR = ErrorType> {
+pub struct SerializableHistory<
+    F: Serialize = OpOrNemesisFuncType,
+    V: Serialize = HistoryValue,
+    ERR = ErrorType,
+> {
     #[serde(rename = ":index")]
     pub index: u64,
     #[serde(rename = ":type")]
@@ -29,14 +35,23 @@ pub struct SerializableHistory<F = OpFunctionType, ERR = ErrorType> {
     #[serde(rename = ":f")]
     pub f: F,
     #[serde(rename = ":value")]
-    pub value: Op,
+    pub value: V,
     #[serde(rename = ":time")]
     pub time: u64,
     #[serde(rename = ":process")]
-    pub process: u64,
+    pub process: HistoryProcess,
     #[serde(rename = ":error")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<ERR>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, derive_more::From)]
+#[serde(untagged)]
+pub enum HistoryValue {
+    /// A string type is for nemesis discription.
+    String(String),
+    /// A Op type is for Op generator result.
+    Op(Op),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -52,37 +67,49 @@ pub enum HistoryType {
     Info,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum HistoryProcess {
+    #[serde(rename = ":nemesis")]
+    Nemesis,
+    #[serde(untagged)]
+    Gen(u64),
+}
+
 /// A list of Serializable history
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializableHistoryList<F = OpFunctionType, ERR = ErrorType>(
-    pub Vec<SerializableHistory<F, ERR>>,
-);
+pub struct SerializableHistoryList<
+    F: Serialize = OpFunctionType,
+    V: Serialize = HistoryValue,
+    ERR = ErrorType,
+>(pub Vec<SerializableHistory<F, V, ERR>>);
 
-impl<F, ERR> Default for SerializableHistoryList<F, ERR> {
+impl<F: Serialize, V: Serialize, ERR> Default for SerializableHistoryList<F, V, ERR> {
     fn default() -> Self {
         Self(vec![])
     }
 }
 
-impl Deref for SerializableHistoryList {
-    type Target = Vec<SerializableHistory>;
+impl<F: Serialize, V: Serialize, ERR> Deref for SerializableHistoryList<F, V, ERR> {
+    type Target = Vec<SerializableHistory<F, V, ERR>>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
-impl DerefMut for SerializableHistoryList {
+impl<F: Serialize, V: Serialize, ERR> DerefMut for SerializableHistoryList<F, V, ERR> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<F: PartialEq, ERR: PartialEq> PartialEq for SerializableHistoryList<F, ERR> {
+impl<F: PartialEq + Serialize, V: PartialEq + Serialize, ERR: PartialEq> PartialEq
+    for SerializableHistoryList<F, V, ERR>
+{
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<ERR: Send> SerializableHistoryList<OpFunctionType, ERR> {
+impl<ERR: Send> SerializableHistoryList<OpOrNemesisFuncType, HistoryValue, ERR> {
     /// Get the current timestamp.
     fn timestamp(&self, global: &Arc<Global<Op, ERR>>) -> u64 {
         time::Instant::now()
@@ -92,13 +119,15 @@ impl<ERR: Send> SerializableHistoryList<OpFunctionType, ERR> {
     /// Push an invoke history to the history list.
     pub fn push_invoke(&mut self, global: &Arc<Global<Op, ERR>>, process: u64, value: Op) {
         let f: OpFunctionType = (&value).into();
+        let f: OpOrNemesisFuncType = f.into();
+        let value = value.into();
         let item = SerializableHistory {
             index: self.0.len() as u64,
             type_: HistoryType::Invoke,
             f,
             value,
             time: self.timestamp(global),
-            process,
+            process: HistoryProcess::Gen(process),
             error: None,
         };
         self.0.push(item);
@@ -118,14 +147,28 @@ impl<ERR: Send> SerializableHistoryList<OpFunctionType, ERR> {
             "result type mismatch"
         );
         let f: OpFunctionType = (&value).into();
+        let f: OpOrNemesisFuncType = f.into();
         let item = SerializableHistory {
             index: self.0.len() as u64,
             type_: result_type,
             f,
-            value,
+            value: value.into(),
             time: self.timestamp(global),
-            process,
+            process: HistoryProcess::Gen(process),
             error,
+        };
+        self.0.push(item);
+    }
+
+    pub fn push_nemesis(&mut self, global: &Arc<Global<Op, ERR>>, value: NemesisGen) {
+        let item = SerializableHistory {
+            index: self.0.len() as u64,
+            type_: HistoryType::Info,
+            f: OpOrNemesisFuncType::Nemesis((&value).into()),
+            value: HistoryValue::String(todo!()),
+            time: self.timestamp(global),
+            process: HistoryProcess::Nemesis,
+            error: None,
         };
         self.0.push(item);
     }
@@ -136,10 +179,7 @@ mod tests {
     use j4rs::Instance;
 
     use super::*;
-    use crate::ffi::{
-            equals_clj, read_edn,
-            FromSerde, ToDe,
-        };
+    use crate::ffi::{equals_clj, read_edn, FromSerde, ToDe};
 
     #[test]
     fn test_history_list_conversion() -> anyhow::Result<()> {

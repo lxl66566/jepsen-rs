@@ -13,6 +13,8 @@ use serde::{
 };
 use serde_json::{json, Value};
 
+use crate::nemesis::SerializableNemesisType;
+
 /// An operation that can be executed on a database. Generatored by jepsen
 /// Generator.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +45,13 @@ impl From<&Op> for OpFunctionType {
             Op::Txn(_) => OpFunctionType::Txn,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, derive_more::From)]
+#[serde(untagged)]
+pub enum OpOrNemesisFuncType {
+    Op(OpFunctionType),
+    Nemesis(SerializableNemesisType),
 }
 
 /// A list of [`Op`]s
@@ -143,6 +152,37 @@ impl<'de> Deserialize<'de> for Op {
         D: serde::Deserializer<'de>,
     {
         deserializer.deserialize_any(OpVisitor)
+    }
+}
+
+pub mod nemesis {
+    use serde::{Deserialize, Serialize};
+
+    use crate::{
+        nemesis::{NemesisRecord, NemesisType},
+        op::Op,
+    };
+
+    /// A union of [`NemesisType`] and [`Op`].
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum NemesisOrOp {
+        /// Generate nemesis
+        NemesisType(NemesisType),
+        /// Recover nemesis
+        NemesisRecord(NemesisRecord),
+        Op(Op),
+    }
+
+    impl From<NemesisType> for NemesisOrOp {
+        fn from(nemesis_type: NemesisType) -> Self {
+            Self::NemesisType(nemesis_type)
+        }
+    }
+
+    impl From<Op> for NemesisOrOp {
+        fn from(op: Op) -> Self {
+            Self::Op(op)
+        }
     }
 }
 
