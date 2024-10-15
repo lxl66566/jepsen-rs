@@ -7,7 +7,7 @@ use madsim::time;
 
 use super::RawGenerator;
 use crate::{
-    history::{ErrorType, SerializableHistoryList},
+    history::{ErrorType, HistoryValue, SerializableHistoryList},
     op::{Op, OpFunctionType},
 };
 
@@ -85,13 +85,13 @@ pub struct Global<'a, T: Send = Op, ERR: Send = ErrorType> {
     /// The start time of the simulation
     pub start_time: time::Instant,
     /// The history list
-    pub history: Mutex<SerializableHistoryList<OpFunctionType, ERR>>,
+    pub history: Mutex<SerializableHistoryList<OpFunctionType, HistoryValue, ERR>>,
 }
 
 impl<'a, T: Send + 'a, ERR: Send> Global<'a, T, ERR> {
     /// Create a new global context
     pub fn new(gen: impl RawGenerator<Item = T> + Send + 'a) -> Self {
-        let h: SerializableHistoryList<OpFunctionType, ERR> = Default::default();
+        let h: SerializableHistoryList<OpFunctionType, HistoryValue, ERR> = Default::default();
         Self {
             id_set: Mutex::new(BTreeSet::new()).into(),
             gen: Mutex::new(Some(

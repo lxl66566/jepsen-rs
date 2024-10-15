@@ -1,42 +1,16 @@
-use crate::{
-    nemesis::{NemesisRecord, NemesisType},
-    op::Op,
-};
-
-/// A union of [`NemesisType`] and [`Op`].
-#[derive(Debug, Clone, PartialEq)]
-pub enum NemesisOrOp {
-    /// Generate nemesis
-    NemesisType(NemesisType),
-    /// Recover nemesis
-    NemesisRecord(NemesisRecord),
-    Op(Op),
-}
-
-impl From<NemesisType> for NemesisOrOp {
-    fn from(nemesis_type: NemesisType) -> Self {
-        Self::NemesisType(nemesis_type)
-    }
-}
-
-impl From<Op> for NemesisOrOp {
-    fn from(op: Op) -> Self {
-        Self::Op(op)
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::sync::Arc;
 
     use tap::Tap as _;
 
-    use super::*;
     use crate::{
         generator::{
             controller::GeneratorGroupStrategy, DelayAsyncIter, Generator, GeneratorBuilder,
             GeneratorGroup, Global, RawGenerator,
         },
+        nemesis::NemesisType,
+        op::{nemesis::NemesisOrOp, Op},
         utils::OverflowingAddRange,
     };
 
