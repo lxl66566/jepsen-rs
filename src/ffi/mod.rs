@@ -49,7 +49,7 @@ impl<T> J4rsDie<T> for j4rs::errors::Result<T> {
         match self {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("Error: {:?}", e);
+                eprintln!("Error: {}", e);
                 std::process::exit(1);
             }
         }
