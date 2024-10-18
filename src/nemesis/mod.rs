@@ -141,9 +141,9 @@ pub enum NemesisGen {
     Recover(NemesisRecord),
 }
 
-impl Into<String> for NemesisGen {
-    fn into(self) -> String {
-        match self {
+impl From<NemesisGen> for String {
+    fn from(val: NemesisGen) -> Self {
+        match val {
             NemesisGen::Execute(nemesis_type) => {
                 format!(
                     "Execute: {}",
