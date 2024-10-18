@@ -3,8 +3,11 @@ use std::{collections::HashMap, sync::Mutex};
 use anyhow::Result;
 use jepsen_rs::{
     client::{Client, ElleRwClusterClient, JepsenClient},
-    generator::{controller::GeneratorGroupStrategy, elle_rw::ElleRwGenerator, GeneratorGroup},
-    op::Op,
+    generator::{
+        controller::GeneratorGroupStrategy, elle_rw::ElleRwGenerator, GeneratorGroup,
+        NemesisRawGenWrapper,
+    },
+    op::{nemesis::OpOrNemesis, Op},
 };
 use log::{info, LevelFilter};
 
@@ -30,6 +33,9 @@ impl ElleRwClusterClient for TestCluster {
         self.db.lock().unwrap().insert(key, value);
         Ok(())
     }
+    async fn txn(&self, ops: Vec<Op>) -> Result<Vec<Op>, String> {
+        todo!()
+    }
 }
 
 #[test]
@@ -45,7 +51,7 @@ pub fn intergration_test() -> Result<()> {
 
     let cluster = TestCluster::new();
     let raw_gen = ElleRwGenerator::new()?;
-    let client = JepsenClient::new(cluster, raw_gen);
+    let client = JepsenClient::new(cluster, NemesisRawGenWrapper(Box::new(raw_gen)));
     let client = Box::leak(client.into());
     info!("intergration_test: client created");
 
@@ -53,7 +59,7 @@ pub fn intergration_test() -> Result<()> {
         // get generators, transform and merge them
         let g1 = client
             .new_generator(100)
-            .filter(|o| matches!(o, Op::Txn(txn) if txn.len() == 1))
+            .filter(|o| matches!(o, OpOrNemesis::Op(Op::Txn(txn)) if txn.len() == 1))
             .await;
         let g2 = client.new_generator(50);
         let g3 = client.new_generator(50);

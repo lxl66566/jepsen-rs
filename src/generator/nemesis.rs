@@ -7,31 +7,11 @@ mod test {
     use crate::{
         generator::{
             controller::GeneratorGroupStrategy, DelayAsyncIter, Generator, GeneratorBuilder,
-            GeneratorGroup, Global, RawGenerator,
+            GeneratorGroup, Global, TestOpGen,
         },
         nemesis::NemesisType,
         op::{nemesis::OpOrNemesis, Op},
-        utils::OverflowingAddRange,
     };
-
-    #[derive(Default)]
-    struct TestOpGen {
-        index: usize,
-    }
-
-    /// infinitely generate ops
-    impl RawGenerator for TestOpGen {
-        type Item = OpOrNemesis;
-        fn gen(&mut self) -> Self::Item {
-            self.index = self.index.overflowing_add_range(1, 0..3);
-            OpOrNemesis::from(match self.index {
-                0 => Op::Read(1, Some(1)),
-                1 => Op::Write(1, 1),
-                2 => Op::Txn(vec![Op::Read(1, Some(1)), Op::Write(1, 1)]),
-                _ => unreachable!(),
-            })
-        }
-    }
 
     #[madsim::test]
     async fn test_nemesis_and_op_generator_intergration() {
