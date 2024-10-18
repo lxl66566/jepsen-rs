@@ -10,7 +10,7 @@ mod test {
             GeneratorGroup, Global, RawGenerator,
         },
         nemesis::NemesisType,
-        op::{nemesis::NemesisOrOp, Op},
+        op::{nemesis::OpOrNemesis, Op},
         utils::OverflowingAddRange,
     };
 
@@ -21,10 +21,10 @@ mod test {
 
     /// infinitely generate ops
     impl RawGenerator for TestOpGen {
-        type Item = NemesisOrOp;
+        type Item = OpOrNemesis;
         fn gen(&mut self) -> Self::Item {
             self.index = self.index.overflowing_add_range(1, 0..3);
-            NemesisOrOp::from(match self.index {
+            OpOrNemesis::from(match self.index {
                 0 => Op::Read(1, Some(1)),
                 1 => Op::Write(1, 1),
                 2 => Op::Txn(vec![Op::Read(1, Some(1)), Op::Write(1, 1)]),
@@ -49,9 +49,9 @@ mod test {
                 Op::Write(1, 1),
                 Op::Txn(vec![Op::Read(1, Some(1)), Op::Write(1, 1)])
             ]
-            .map(NemesisOrOp::Op)
+            .map(OpOrNemesis::Op)
             .to_vec()
-            .tap_mut(|ops| ops.push(NemesisOrOp::NemesisType(NemesisType::SplitOne(1))))
+            .tap_mut(|ops| ops.push(OpOrNemesis::NemesisType(NemesisType::SplitOne(1))))
         );
     }
 }
