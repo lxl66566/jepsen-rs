@@ -159,7 +159,7 @@ pub trait Check {
     /// The history will be written to `history.edn` in the output directory.
     fn check<F: Serialize, ERR: Serialize>(
         &self,
-        history: &SerializableHistoryList<F, ERR>,
+        history: &SerializableHistoryList<F, V, ERR>,
         option: CheckOption,
     ) -> Result<SerializableCheckResult>;
 }
