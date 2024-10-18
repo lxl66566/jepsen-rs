@@ -159,6 +159,7 @@ impl<ERR: Send> SerializableHistoryList<OpOrNemesisFuncType, HistoryValue, ERR> 
         self.0.push(item);
     }
 
+    /// Push a nemesis to the history list.
     pub fn push_nemesis(&mut self, global: &Arc<Global<OpOrNemesis, ERR>>, value: NemesisGen) {
         let item = SerializableHistory {
             index: self.0.len() as u64,
@@ -178,7 +179,11 @@ mod tests {
     use j4rs::Instance;
 
     use super::*;
-    use crate::ffi::{equals_clj, read_edn, FromSerde, ToDe};
+    use crate::{
+        ffi::{equals_clj, print_clj, read_edn, FromSerde, ToDe},
+        generator::TestOpGen,
+        nemesis::NemesisType,
+    };
 
     #[test]
     fn test_history_list_conversion() -> anyhow::Result<()> {
@@ -192,6 +197,30 @@ mod tests {
 
         let res: Instance = Instance::from_ser(res)?;
         assert!(equals_clj(res, read_edn(include_str!("../assets/ex_history.edn"))?).unwrap());
+        Ok(())
+    }
+
+    #[test]
+    fn test_push_op_and_nemesis_to_history_and_conversion() -> anyhow::Result<()> {
+        let global: Arc<Global<'_, OpOrNemesis, ErrorType>> =
+            Arc::new(Global::new(TestOpGen::default()));
+        let nm = NemesisGen::Execute(NemesisType::PartitionHalves([1, 2].into_iter().collect()));
+        let mut res = SerializableHistoryList::default();
+        res.push_nemesis(&global, nm);
+        let his = res.0.first().unwrap();
+        assert_eq!(his.type_, HistoryType::Info);
+        assert_eq!(
+            his.f,
+            OpOrNemesisFuncType::Nemesis(crate::nemesis::SerializableNemesisType::Partition)
+        );
+        assert_eq!(his.process, HistoryProcess::Nemesis);
+        assert!(match his.value {
+            HistoryValue::String(ref s) => s.starts_with("Execute: {\"PartitionHalves\""),
+            _ => false,
+        });
+        res.push_invoke(&global, 1, Op::Read(1, None));
+        let res: Instance = Instance::from_ser(res)?; // test serialization ok
+        print_clj(res);
         Ok(())
     }
 }

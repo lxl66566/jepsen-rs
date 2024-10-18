@@ -17,14 +17,59 @@ use tap::Tap;
 use tokio_stream::{Stream, StreamExt as _};
 pub use traits::*;
 
+#[cfg(test)]
+use crate::utils::OverflowingAddRange as _;
 use crate::{
     history::ErrorType,
-    op::Op,
+    op::{nemesis::OpOrNemesis, Op},
     utils::{Counter, ExtraStreamExt},
 };
-
 /// The content of a generator, a tuple of [`Op`] and [`DelayStrategy`].
 pub type GeneratorContent<U> = (U, DelayStrategy);
+
+/// A wrapper that wraps a raw [`Op`] generator to a raw [`OpOrNemesis`]
+/// generator
+#[derive(derive_more::From)]
+pub struct NemesisRawGenWrapper(pub Box<dyn RawGenerator<Item = Op> + Send>);
+
+impl RawGenerator for NemesisRawGenWrapper {
+    type Item = OpOrNemesis;
+    fn gen(&mut self) -> Self::Item {
+        OpOrNemesis::from(self.0.gen())
+    }
+}
+
+#[cfg(test)]
+impl RawGenerator for RangeFrom<i32> {
+    type Item = i32;
+    fn gen(&mut self) -> Self::Item {
+        let temp = self.start;
+        self.start.add_assign(1);
+        temp
+    }
+}
+
+/// A raw [`OP`] Generator for testing
+#[cfg(test)]
+#[derive(Default)]
+pub struct TestOpGen {
+    index: usize,
+}
+
+#[cfg(test)]
+/// infinitely generate ops
+impl RawGenerator for TestOpGen {
+    type Item = OpOrNemesis;
+    fn gen(&mut self) -> Self::Item {
+        self.index = self.index.overflowing_add_range(1, 0..3);
+        OpOrNemesis::from(match self.index {
+            0 => Op::Read(1, Some(1)),
+            1 => Op::Write(1, 1),
+            2 => Op::Txn(vec![Op::Read(1, Some(1)), Op::Write(1, 1)]),
+            _ => unreachable!(),
+        })
+    }
+}
 
 /// The builder of generator.
 pub struct GeneratorBuilder<'a, U: Send + fmt::Debug = Op, ERR: Send + 'a = ErrorType> {

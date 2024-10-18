@@ -16,29 +16,19 @@ pub type NetRecord = HashMap<ServerId, HashSet<ServerId>>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SerializableNemesisType {
-    #[serde(rename = ":bitflip-wal")]
     BitflipWal,
-    #[serde(rename = ":bitflip-snap")]
     BitflipSnap,
-    #[serde(rename = ":truncate-wal")]
     TruncateWal,
-    #[serde(rename = ":pause")]
     Pause,
-    #[serde(rename = ":kill")]
     Kill,
-    #[serde(rename = ":leave")]
     Partition,
-    #[serde(rename = ":clock")]
     Clock,
     // Following: Recovery types
     /// Recovery from Partition
-    #[serde(rename = ":join")]
     Join,
     /// Recovery from Stop
-    #[serde(rename = ":start")]
     Start,
     /// Recovery from Kill
-    #[serde(rename = ":resume")]
     Resume,
 }
 
