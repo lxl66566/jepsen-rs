@@ -140,3 +140,24 @@ pub enum NemesisGen {
     Execute(NemesisType),
     Recover(NemesisRecord),
 }
+
+impl Into<String> for NemesisGen {
+    fn into(self) -> String {
+        match self {
+            NemesisGen::Execute(nemesis_type) => {
+                format!(
+                    "Execute: {}",
+                    serde_json::to_string(&nemesis_type)
+                        .expect("Serialize NemesisType to json failed")
+                )
+            }
+            NemesisGen::Recover(nemesis_record) => {
+                format!(
+                    "Recover: {}",
+                    serde_json::to_string(&nemesis_record)
+                        .expect("Serialize NemesisRecord to json failed")
+                )
+            }
+        }
+    }
+}

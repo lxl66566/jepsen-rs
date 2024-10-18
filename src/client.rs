@@ -7,7 +7,7 @@ use crate::{
     checker::{elle_rw::ElleRwChecker, Check, CheckOption, SerializableCheckResult},
     generator::{Generator, GeneratorBuilder, GeneratorIter, Global, RawGenerator},
     history::HistoryType,
-    op::Op,
+    op::{nemesis::NemesisOrOp, Op},
 };
 
 /// The interface of a cluster client, needs to be implemented by the external
@@ -16,11 +16,12 @@ use crate::{
 pub trait ElleRwClusterClient {
     async fn get(&self, key: u64) -> std::result::Result<Option<u64>, String>;
     async fn put(&self, key: u64, value: u64) -> std::result::Result<(), String>;
+    async fn txn(&self, ops: Vec<Op>) -> std::result::Result<Vec<Op>, String>;
 }
 
 /// The interface of a jepsen client.
 #[async_trait::async_trait]
-pub trait Client<U: Send + fmt::Debug = Op> {
+pub trait Client<U: Send + fmt::Debug = NemesisOrOp> {
     type ERR: Send + 'static;
     /// client received an op, send it to cluster and deal the result. The
     /// history (both invoke and result) will be recorded in this function.
@@ -36,11 +37,14 @@ pub trait Client<U: Send + fmt::Debug = Op> {
 /// cluster, and record the history file.
 pub struct JepsenClient<EC: ElleRwClusterClient + Send + Sync + 'static> {
     cluster_client: EC,
-    pub global: Arc<Global<'static, Op, <Self as Client>::ERR>>,
+    pub global: Arc<Global<'static, NemesisOrOp, <Self as Client>::ERR>>,
 }
 
 impl<EC: ElleRwClusterClient + Send + Sync + 'static> JepsenClient<EC> {
-    pub fn new(cluster: EC, raw_gen: impl RawGenerator<Item = Op> + Send + 'static) -> Self {
+    pub fn new(
+        cluster: EC,
+        raw_gen: impl RawGenerator<Item = NemesisOrOp> + Send + 'static,
+    ) -> Self {
         Self {
             cluster_client: cluster,
             global: Arc::new(Global::new(raw_gen)),
@@ -60,21 +64,16 @@ impl<EC: ElleRwClusterClient + Send + Sync + 'static> JepsenClient<EC> {
                 self.cluster_client.put(key, value).await?;
                 Ok(Op::Write(key, value))
             }
-            Op::Txn(ops) => Ok(Op::Txn(
-                futures_util::future::join_all(ops.into_iter().map(|op| self.handle_op_inner(op)))
-                    .await
-                    .into_iter()
-                    .collect::<Result<_, _>>()?,
-            )),
+            Op::Txn(ops) => Ok(Op::Txn(self.cluster_client.txn(ops).await?)),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl<EC: ElleRwClusterClient + Send + Sync + 'static> Client<Op> for JepsenClient<EC> {
+impl<EC: ElleRwClusterClient + Send + Sync + 'static> Client<NemesisOrOp> for JepsenClient<EC> {
     type ERR = String;
 
-    fn new_generator(&self, n: usize) -> Generator<'static, Op, Self::ERR> {
+    fn new_generator(&self, n: usize) -> Generator<'static, NemesisOrOp, Self::ERR> {
         debug!("Jepsen client make new generator with {} ops", n);
         let global = self.global.clone();
         let seq = global.take_seq(n);
@@ -83,36 +82,43 @@ impl<EC: ElleRwClusterClient + Send + Sync + 'static> Client<Op> for JepsenClien
             .build()
     }
 
-    async fn handle_op(&'static self, id: u64, op: Op) {
+    async fn handle_op(&'static self, id: u64, op: NemesisOrOp) {
         trace!(
             "Jepsen client thread {} receive and handles an op: {:?}",
             id,
             op
         );
-        self.global
-            .history
-            .lock()
-            .unwrap()
-            .push_invoke(&self.global, id, op.clone());
-        let res = self.handle_op_inner(op.clone()).await;
-        match res {
-            Ok(op) => {
-                self.global.history.lock().unwrap().push_result(
-                    &self.global,
-                    id,
-                    HistoryType::Ok,
-                    op,
-                    None,
-                );
+        match op {
+            NemesisOrOp::Op(op) => {
+                self.global
+                    .history
+                    .lock()
+                    .unwrap()
+                    .push_invoke(&self.global, id, op.clone());
+                let res = self.handle_op_inner(op.clone()).await;
+                match res {
+                    Ok(op) => {
+                        self.global.history.lock().unwrap().push_result(
+                            &self.global,
+                            id,
+                            HistoryType::Ok,
+                            op,
+                            None,
+                        );
+                    }
+                    Err(err) => {
+                        self.global.history.lock().unwrap().push_result(
+                            &self.global,
+                            id,
+                            HistoryType::Fail,
+                            op,
+                            Some(err),
+                        );
+                    }
+                }
             }
-            Err(err) => {
-                self.global.history.lock().unwrap().push_result(
-                    &self.global,
-                    id,
-                    HistoryType::Fail,
-                    op,
-                    Some(err),
-                );
+            _ => {
+                todo!()
             }
         }
     }
@@ -123,7 +129,7 @@ impl<EC: ElleRwClusterClient + Send + Sync + 'static> Client<Op> for JepsenClien
     #[allow(clippy::await_holding_lock)]
     async fn run(
         &'static self,
-        mut gen: impl GeneratorIter<Item = Op> + Send,
+        mut gen: impl GeneratorIter<Item = NemesisOrOp> + Send,
     ) -> Result<SerializableCheckResult, Self::ERR> {
         while let Some((op, id)) = gen.next_with_id().await {
             self.handle_op(id, op).await;

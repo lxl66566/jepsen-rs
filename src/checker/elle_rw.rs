@@ -25,9 +25,9 @@ impl Default for ElleRwChecker {
 }
 
 impl super::Check for ElleRwChecker {
-    fn check<F: Serialize, ERR: Serialize>(
+    fn check<F: Serialize, V: Serialize, ERR: Serialize>(
         &self,
-        history: &SerializableHistoryList<F, ERR>,
+        history: &SerializableHistoryList<F, V, ERR>,
         option: CheckOption,
     ) -> anyhow::Result<SerializableCheckResult> {
         with_jvm(|_| {
