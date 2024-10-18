@@ -156,7 +156,6 @@ impl<'de> Deserialize<'de> for Op {
 }
 
 pub mod nemesis {
-    use serde::{Deserialize, Serialize};
 
     use crate::{
         nemesis::{NemesisRecord, NemesisType},
@@ -165,7 +164,7 @@ pub mod nemesis {
 
     /// A union of [`NemesisType`] and [`Op`].
     #[derive(Debug, Clone, PartialEq)]
-    pub enum NemesisOrOp {
+    pub enum OpOrNemesis {
         /// Generate nemesis
         NemesisType(NemesisType),
         /// Recover nemesis
@@ -173,13 +172,13 @@ pub mod nemesis {
         Op(Op),
     }
 
-    impl From<NemesisType> for NemesisOrOp {
+    impl From<NemesisType> for OpOrNemesis {
         fn from(nemesis_type: NemesisType) -> Self {
             Self::NemesisType(nemesis_type)
         }
     }
 
-    impl From<Op> for NemesisOrOp {
+    impl From<Op> for OpOrNemesis {
         fn from(op: Op) -> Self {
             Self::Op(op)
         }
