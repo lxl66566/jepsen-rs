@@ -1,3 +1,14 @@
+//! This module provides the nemesis framework for Chaos testing.
+//! This file contains the type definitions for the nemesis framework.
+//! They have the relation like this:
+//!
+//!    OpOrNemesis
+//!    /        \
+//!   Op   AllNemesis
+//!            /    \
+//!  NemesisType     \
+//!               NemesisRecord
+
 pub mod implementation;
 pub mod register;
 
@@ -61,11 +72,11 @@ impl From<&NemesisRecord> for SerializableNemesisType {
     }
 }
 
-impl From<&NemesisGen> for SerializableNemesisType {
-    fn from(nemesis_gen: &NemesisGen) -> Self {
+impl From<&AllNemesis> for SerializableNemesisType {
+    fn from(nemesis_gen: &AllNemesis) -> Self {
         match nemesis_gen {
-            NemesisGen::Execute(nemesis_type) => nemesis_type.into(),
-            NemesisGen::Recover(nemesis_record) => nemesis_record.into(),
+            AllNemesis::Execute(nemesis_type) => nemesis_type.into(),
+            AllNemesis::Recover(nemesis_record) => nemesis_record.into(),
         }
     }
 }
@@ -126,22 +137,22 @@ impl From<NetRecord> for NemesisRecord {
 /// A Union type of [`NemesisType`] and [`NemesisRecord`]. Nemesis Generator
 /// will generate this.
 #[derive(Debug, Clone, PartialEq, derive_more::From)]
-pub enum NemesisGen {
+pub enum AllNemesis {
     Execute(NemesisType),
     Recover(NemesisRecord),
 }
 
-impl From<NemesisGen> for String {
-    fn from(val: NemesisGen) -> Self {
+impl From<AllNemesis> for String {
+    fn from(val: AllNemesis) -> Self {
         match val {
-            NemesisGen::Execute(nemesis_type) => {
+            AllNemesis::Execute(nemesis_type) => {
                 format!(
                     "Execute: {}",
                     serde_json::to_string(&nemesis_type)
                         .expect("Serialize NemesisType to json failed")
                 )
             }
-            NemesisGen::Recover(nemesis_record) => {
+            AllNemesis::Recover(nemesis_record) => {
                 format!(
                     "Recover: {}",
                     serde_json::to_string(&nemesis_record)

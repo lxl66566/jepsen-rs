@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     generator::Global,
-    nemesis::NemesisGen,
+    nemesis::AllNemesis,
     op::{nemesis::OpOrNemesis, Op, OpFunctionType, OpOrNemesisFuncType},
 };
 pub type ErrorType = Vec<String>;
@@ -160,7 +160,7 @@ impl<ERR: Send> SerializableHistoryList<OpOrNemesisFuncType, HistoryValue, ERR> 
     }
 
     /// Push a nemesis to the history list.
-    pub fn push_nemesis(&mut self, global: &Arc<Global<OpOrNemesis, ERR>>, value: NemesisGen) {
+    pub fn push_nemesis(&mut self, global: &Arc<Global<OpOrNemesis, ERR>>, value: AllNemesis) {
         let item = SerializableHistory {
             index: self.0.len() as u64,
             type_: HistoryType::Info,
@@ -204,7 +204,7 @@ mod tests {
     fn test_push_op_and_nemesis_to_history_and_conversion() -> anyhow::Result<()> {
         let global: Arc<Global<'_, OpOrNemesis, ErrorType>> =
             Arc::new(Global::new(TestOpGen::default()));
-        let nm = NemesisGen::Execute(NemesisType::PartitionHalves([1, 2].into_iter().collect()));
+        let nm = AllNemesis::Execute(NemesisType::PartitionHalves([1, 2].into_iter().collect()));
         let mut res = SerializableHistoryList::default();
         res.push_nemesis(&global, nm);
         let his = res.0.first().unwrap();

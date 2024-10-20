@@ -1,6 +1,5 @@
-use std::{fmt::Debug, pin::Pin, sync::Arc};
+use std::pin::Pin;
 
-use log::trace;
 use tokio_stream::{Stream, StreamExt};
 
 /// The extra methods on async iterators (Stream).
