@@ -22,15 +22,15 @@ fn default_out_dir() -> PathBuf {
 #[serde(rename_all = "kebab-case")]
 pub struct SerializableCheckResult {
     #[serde(rename = ":valid?")]
-    valid: ValidType,
+    pub valid: ValidType,
     #[serde(rename = ":anomaly-types", default)]
-    anomaly_types: Vec<String>,
+    pub anomaly_types: Vec<String>,
     #[serde(rename = ":anomalies")]
-    anomalies: Option<serde_json::Value>,
+    pub anomalies: Option<serde_json::Value>,
     #[serde(rename = ":not", default)]
-    not: HashSet<String>,
+    pub not: HashSet<String>,
     #[serde(rename = ":also-not", default)]
-    also_not: HashSet<String>,
+    pub also_not: HashSet<String>,
 }
 
 #[serde_with::skip_serializing_none]

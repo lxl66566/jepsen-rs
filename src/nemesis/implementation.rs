@@ -5,8 +5,8 @@ use madsim::rand::Rng as _;
 use super::{NemesisRecord, NemesisType, NetRecord, ServerId};
 use crate::utils::{select_numbers_from_range, OverflowingAddRange};
 
-/// The trait for a cluster which could apply nemesis. This trait contains some
-/// basic methods to implement.
+/// The trait for a cluster/client which could apply nemesis. This trait
+/// contains some basic methods to implement.
 #[async_trait::async_trait]
 pub trait NemesisCluster {
     // impl by external cluster

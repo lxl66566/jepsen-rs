@@ -31,7 +31,7 @@ mod test {
             ]
             .map(OpOrNemesis::Op)
             .to_vec()
-            .tap_mut(|ops| ops.push(OpOrNemesis::NemesisType(NemesisType::SplitOne(1))))
+            .tap_mut(|ops| ops.push(NemesisType::SplitOne(1).into()))
         );
     }
 }

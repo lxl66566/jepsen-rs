@@ -156,31 +156,29 @@ impl<'de> Deserialize<'de> for Op {
 }
 
 pub mod nemesis {
-
     use crate::{
-        nemesis::{NemesisRecord, NemesisType},
+        nemesis::{AllNemesis, NemesisRecord, NemesisType},
         op::Op,
     };
 
-    /// A union of [`NemesisType`] and [`Op`].
-    #[derive(Debug, Clone, PartialEq)]
+    /// A union of [`AllNemesis`] and [`Op`].
+    #[derive(Debug, Clone, PartialEq, derive_more::From)]
     pub enum OpOrNemesis {
-        /// Generate nemesis
-        NemesisType(NemesisType),
-        /// Recover nemesis
-        NemesisRecord(NemesisRecord),
+        Nemesis(AllNemesis),
         Op(Op),
     }
 
+    // two layers conversion
+
     impl From<NemesisType> for OpOrNemesis {
-        fn from(nemesis_type: NemesisType) -> Self {
-            Self::NemesisType(nemesis_type)
+        fn from(value: NemesisType) -> Self {
+            OpOrNemesis::Nemesis(AllNemesis::from(value))
         }
     }
 
-    impl From<Op> for OpOrNemesis {
-        fn from(op: Op) -> Self {
-            Self::Op(op)
+    impl From<NemesisRecord> for OpOrNemesis {
+        fn from(value: NemesisRecord) -> Self {
+            Self::Nemesis(AllNemesis::from(value))
         }
     }
 }
