@@ -1,17 +1,17 @@
 pub mod context;
 pub mod controller;
 pub mod elle_rw;
+pub mod raw_gen;
 pub mod traits;
 
 use core::panic;
-#[cfg(test)]
-use std::ops::{AddAssign, RangeFrom};
 use std::{fmt, pin::Pin, sync::Arc};
 
 use context::GeneratorId;
 pub use context::Global;
 use controller::{DelayStrategy, GeneratorGroupStrategy};
 use log::{debug, trace};
+pub use raw_gen::RawGenerator;
 use tap::Tap;
 use tokio_stream::{Stream, StreamExt as _};
 pub use traits::*;
@@ -24,41 +24,6 @@ use crate::{
 
 /// The content of a generator, a tuple of [`Op`] and [`DelayStrategy`].
 pub type GeneratorContent<U> = (U, DelayStrategy);
-
-/// Cache size for the raw generator.
-pub const GENERATOR_CACHE_SIZE: usize = 200;
-
-/// This trait is for the raw generator (clojure generator), which will only
-/// generate items *infinitely*.
-pub trait RawGenerator {
-    type Item;
-    fn gen(&mut self) -> Self::Item;
-    fn gen_n(&mut self, n: usize) -> Vec<Self::Item> {
-        let mut out = Vec::with_capacity(n);
-        for _ in 0..n {
-            out.push(self.gen());
-        }
-        trace!("takes {} items out from RawGenerator", n);
-        out
-    }
-}
-
-impl<U> Iterator for dyn RawGenerator<Item = U> {
-    type Item = <Self as RawGenerator>::Item;
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.gen())
-    }
-}
-
-#[cfg(test)]
-impl RawGenerator for RangeFrom<i32> {
-    type Item = i32;
-    fn gen(&mut self) -> Self::Item {
-        let temp = self.start;
-        self.start.add_assign(1);
-        temp
-    }
-}
 
 /// The builder of generator.
 pub struct GeneratorBuilder<'a, U: Send + fmt::Debug = Op, ERR: Send + 'a = ErrorType> {
@@ -76,6 +41,7 @@ pub struct GeneratorBuilder<'a, U: Send + fmt::Debug = Op, ERR: Send + 'a = Erro
 }
 
 impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorBuilder<'a, U, ERR> {
+    /// Create a new generator builder.
     #[inline]
     pub fn new(global: Arc<Global<'a, U, ERR>>) -> Self {
         Self {
@@ -86,11 +52,13 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorBuilder<'a, U, ERR>
             id: None,
         }
     }
+    /// Set the id of the generator.
     #[inline]
     pub fn id(mut self, id: GeneratorId) -> Self {
         self.id = Some(id);
         self
     }
+    /// Set the sequence of the generator.
     #[inline]
     pub fn seq(mut self, seq: impl Stream<Item = U> + Send + Unpin + 'a) -> Self {
         self.raw_seq = Some(Box::new(seq));
@@ -102,6 +70,8 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorBuilder<'a, U, ERR>
     pub fn wrapped_seq(self, seq: impl Stream<Item = GeneratorContent<U>> + Send + 'a) -> Self {
         self.pinned_seq(Box::pin(seq))
     }
+    /// function `pinned_seq` is used for the inner StreamExt functions, and
+    /// may not be used by the user.
     #[inline]
     pub fn pinned_seq(
         mut self,
@@ -110,6 +80,7 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorBuilder<'a, U, ERR>
         self.wrapped_seq = Some(seq);
         self
     }
+    /// Set the delay strategy of the generator
     #[inline]
     pub fn delay_strategy(mut self, delay: DelayStrategy) -> Self {
         self.delay_strategy_one = Some(delay);
@@ -119,8 +90,8 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorBuilder<'a, U, ERR>
     /// Build the generator.
     ///
     /// If `wrapped_seq` is provided, the `raw_seq` will be ignored. If
-    /// `wrapped_seq` is none, the `raw_seq` must be provided, and if
-    /// `delay_strategy` is not provided, use default delay strategy.
+    /// `wrapped_seq` is none, the `raw_seq` must be provided.
+    /// If `delay_strategy` is not provided, use default delay strategy.
     #[inline]
     pub fn build(self) -> Generator<'a, U, ERR> {
         let id = self.id.unwrap_or_else(|| self.global.get_id());
@@ -177,6 +148,9 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> Generator<'a, U, ERR> {
             .build()
     }
 
+    /// Map the sequence.
+    /// Note: the element type cannot be changed after mapping because the
+    /// Global type is not changable.
     pub fn map(self, f: impl Fn(U) -> U + Send + 'a) -> Self {
         GeneratorBuilder::new(self.global)
             .id(self.id)
@@ -184,6 +158,7 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> Generator<'a, U, ERR> {
             .build()
     }
 
+    /// Filter the sequence.
     pub async fn filter(self, f: impl Fn(&U) -> bool + Send + 'a) -> Self {
         GeneratorBuilder::new(self.global)
             .id(self.id)
@@ -191,6 +166,7 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> Generator<'a, U, ERR> {
             .build()
     }
 
+    /// Keep the first `n` elements from the sequence and drop the rest.
     pub fn take(self, n: usize) -> Self {
         GeneratorBuilder::new(self.global)
             .id(self.id)
@@ -295,53 +271,58 @@ pub struct GeneratorGroup<'a, U: Send + fmt::Debug = Op, ERR: 'a + Send = ErrorT
 }
 
 impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
-    pub fn new<T>(global: Arc<Global<'a, U, ERR>>, gens: impl IntoIterator<Item = T>) -> Self
+    /// Create a new generator group with the given generators.
+    pub fn new<T>(gens: impl IntoIterator<Item = T>) -> Self
     where
         T: DelayAsyncIter<Item = U, DelayType = DelayStrategy, G = Global<'a, U, ERR>> + Send + 'a,
     {
-        Self::new_with_count_inner(global, gens.into_iter().map(|x| (Box::new(x) as _, 1)))
+        Self::new_with_count_inner(gens.into_iter().map(|x| (Box::new(x) as _, 1)))
     }
 
-    pub fn new_with_count<T>(
-        global: Arc<Global<'a, U, ERR>>,
-        gens: impl IntoIterator<Item = (T, usize)>,
-    ) -> Self
+    ///  Create a new generator group with the given generators and its ratio.
+    pub fn new_with_count<T>(gens: impl IntoIterator<Item = (T, usize)>) -> Self
     where
         T: DelayAsyncIter<Item = U, DelayType = DelayStrategy, G = Global<'a, U, ERR>> + Send + 'a,
     {
-        Self::new_with_count_inner(global, gens.into_iter().map(|(x, c)| (Box::new(x) as _, c)))
+        Self::new_with_count_inner(gens.into_iter().map(|(x, c)| (Box::new(x) as _, c)))
     }
 
     fn new_with_count_inner(
-        global: Arc<Global<'a, U, ERR>>,
         gens: impl IntoIterator<Item = (Box<GeneratorGroupSeq<'a, U, ERR>>, usize)>,
     ) -> Self {
         let gens: Vec<_> = gens
             .into_iter()
             .map(|(g, c)| (g, Counter::new(c)))
             .collect();
+        assert!(
+            !gens.is_empty(),
+            "cannot build a Generator group without item"
+        );
         debug!("generator group created with {} generators", gens.len());
         let ids: Vec<_> = gens.iter().map(|x| x.0.id()).collect();
         debug!("ids: {:?}", ids);
         Self {
-            global,
+            global: Arc::clone(gens[0].0.global()),
             gens,
             strategy: GeneratorGroupStrategy::default(),
             selected: 0,
         }
     }
 
+    /// Set the strategy of the generator group
     #[inline]
     pub fn with_strategy(mut self, strategy: GeneratorGroupStrategy) -> Self {
         self.strategy = strategy;
         self
     }
 
+    /// Add a new generator to the group
     #[inline]
     pub fn push_generator(&mut self, gen: Box<GeneratorGroupSeq<'a, U, ERR>>) {
         self.gens.push((gen, Counter::new(1)));
     }
 
+    /// Add a new generator with ratio to the group
     #[inline]
     pub fn push_generator_with_ratio(
         &mut self,
@@ -351,11 +332,13 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
         self.gens.push((gen, Counter::new(total)));
     }
 
+    /// Remove a generator from the group
     #[inline]
     pub fn remove_generator(&mut self, index: usize) {
         self.gens.remove(index);
     }
 
+    /// Remove the current generator and select the next one by the strategy
     #[inline]
     pub fn remove_current_and_reselect(&mut self) {
         let is_last = self.selected == self.gens.len() - 1;
@@ -374,6 +357,7 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
         }
     }
 
+    /// Get the current generator
     #[inline]
     pub fn current(&self) -> &GeneratorGroupContent<'a, U, ERR> {
         self.gens
@@ -381,11 +365,13 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
             .expect("selected index should in the range")
     }
 
+    /// select to the next generator
     #[inline]
     fn select(&mut self, index: usize) {
         self.selected = index;
     }
 
+    /// choose the next generator and select it
     #[inline]
     fn select_current(&mut self) {
         let next_g = self.strategy.choose(0..self.gens.len());
@@ -408,12 +394,34 @@ impl<'a, ERR: 'a + Send, U: Send + fmt::Debug + 'a> GeneratorGroup<'a, U, ERR> {
     }
 }
 
-// the proc macro `#[async_trait]` expand first, and do not take effect to this
-// impl.
+#[async_trait::async_trait]
+impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorItemGetter
+    for GeneratorGroup<'a, U, ERR>
+{
+    type G = Global<'a, U, ERR>;
+    fn id(&self) -> u64 {
+        unimplemented!("generator group do not have single id")
+    }
+    /// Get the global.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the group is empty.
+    fn global(&self) -> &Arc<Global<'a, U, ERR>> {
+        if self.gens.is_empty() {
+            panic!("cannot get global of an empty generator group");
+        } else {
+            self.gens[0].0.global()
+        }
+    }
+}
+
+// The proc macro `#[async_trait]` expand first, and do not take effect to this
+// impl. So I expand it manually.
 macro_rules! impl_generator_group {
     ($func:ident, $ret: ty) => {
         /// If current generator is not empty, use it.
-        /// Otherwise, select one generator to generate `Op` by group strategy. If
+        /// Otherwise, select next generator to generate `Op` by group strategy. If
         /// it's empty, drop it and try to use another. If all [`Generator`]s in
         /// the group are empty, returns None.
         fn $func<'life0, 'async_trait>(
@@ -451,28 +459,6 @@ macro_rules! impl_generator_group {
 }
 
 #[async_trait::async_trait]
-impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> GeneratorItemGetter
-    for GeneratorGroup<'a, U, ERR>
-{
-    type G = Global<'a, U, ERR>;
-    fn id(&self) -> u64 {
-        unimplemented!("generator group do not have single id")
-    }
-    /// Get the global.
-    ///
-    /// # Panic
-    ///
-    /// Panics if the group is empty.
-    fn global(&self) -> &Arc<Global<'a, U, ERR>> {
-        if self.gens.is_empty() {
-            panic!("cannot get global of an empty generator group");
-        } else {
-            self.gens[0].0.global()
-        }
-    }
-}
-
-#[async_trait::async_trait]
 impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> AsyncIter for GeneratorGroup<'a, U, ERR> {
     type Item = U;
     impl_generator_group!(next, Option<Self::Item>);
@@ -493,7 +479,7 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> From<Generator<'a, U, ERR>>
     for GeneratorGroup<'a, U, ERR>
 {
     fn from(value: Generator<'a, U, ERR>) -> Self {
-        Self::new(value.global.clone(), [value])
+        Self::new([value])
     }
 }
 
@@ -501,14 +487,6 @@ impl<'a, U: Send + fmt::Debug + 'a, ERR: 'a + Send> From<Generator<'a, U, ERR>>
 mod tests {
     use super::*;
     use crate::utils::log_init;
-
-    #[test]
-    fn test_raw_generator() {
-        let mut gen = 0..;
-        let mut out = gen.gen_n(10);
-        out.sort();
-        assert_eq!(out, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    }
 
     #[madsim::test]
     async fn chain_generator_will_free_the_id() {
@@ -537,7 +515,7 @@ mod tests {
             .seq(tokio_stream::iter(global.take_seq(10)))
             .build();
         assert_eq!(g2.id.get(), 2);
-        let gen_group = GeneratorGroup::new(global.clone(), [g0, g1]);
+        let gen_group = GeneratorGroup::new([g0, g1]);
         assert_eq!(global.id_set.lock().unwrap().len(), 3); // 0 1 2
         let _gen_merge = gen_group.to_generator().await;
         assert_eq!(global.id_set.lock().unwrap().len(), 2); // 0 2
@@ -572,6 +550,7 @@ mod tests {
     #[madsim::test]
     async fn test_generator_group_strategy() {
         let global = Arc::new(Global::<_, String>::new(1..));
+
         // Test Chain
         let gen1 = GeneratorBuilder::new(Arc::clone(&global))
             .seq(tokio_stream::iter(global.take_seq(5)))
@@ -580,8 +559,8 @@ mod tests {
             .seq(tokio_stream::iter(global.take_seq(5)))
             .build();
 
-        let gen_group = GeneratorGroup::new(global.clone(), [gen1, gen2])
-            .with_strategy(GeneratorGroupStrategy::Chain);
+        let gen_group =
+            GeneratorGroup::new([gen1, gen2]).with_strategy(GeneratorGroupStrategy::Chain);
         let res = gen_group.collect().await;
         assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
@@ -592,8 +571,8 @@ mod tests {
         let gen2 = GeneratorBuilder::new(Arc::clone(&global))
             .seq(tokio_stream::iter(global.take_seq(5)))
             .build();
-        let gen_group = GeneratorGroup::new(global.clone(), [gen1, gen2])
-            .with_strategy(GeneratorGroupStrategy::default());
+        let gen_group =
+            GeneratorGroup::new([gen1, gen2]).with_strategy(GeneratorGroupStrategy::default());
         let res = gen_group.collect().await;
         assert_eq!(res, vec![11, 16, 12, 17, 13, 18, 14, 19, 15, 20]);
 
@@ -604,8 +583,8 @@ mod tests {
         let gen2 = GeneratorBuilder::new(Arc::clone(&global))
             .seq(tokio_stream::iter(global.take_seq(5)))
             .build();
-        let gen_group = GeneratorGroup::new(global.clone(), [gen1, gen2])
-            .with_strategy(GeneratorGroupStrategy::Random);
+        let gen_group =
+            GeneratorGroup::new([gen1, gen2]).with_strategy(GeneratorGroupStrategy::Random);
         let res = gen_group.collect().await;
         assert!(res.into_iter().all(|x| (21..=30).contains(&x)));
     }
@@ -619,8 +598,8 @@ mod tests {
         let gen2 = GeneratorBuilder::new(Arc::clone(&global))
             .seq(tokio_stream::iter(global.take_seq(5)))
             .build();
-        let gen_group = GeneratorGroup::new(global.clone(), [gen1, gen2])
-            .with_strategy(GeneratorGroupStrategy::Chain);
+        let gen_group =
+            GeneratorGroup::new([gen1, gen2]).with_strategy(GeneratorGroupStrategy::Chain);
         let gen: Generator<_, i32> = gen_group.to_generator().await;
         let res = gen.collect().await;
         assert_eq!(res, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -635,7 +614,7 @@ mod tests {
         let g2 = GeneratorBuilder::new(Arc::clone(&global))
             .seq(tokio_stream::iter(global.take_seq(5)))
             .build();
-        let mut gen_group = GeneratorGroup::new(global.clone(), [g1, g2]);
+        let mut gen_group = GeneratorGroup::new([g1, g2]);
         assert_eq!(gen_group.next_with_id().await.unwrap(), (1, 0));
         assert_eq!(gen_group.next_with_id().await.unwrap(), (6, 1));
         assert_eq!(gen_group.next_with_id().await.unwrap(), (2, 0));
@@ -652,8 +631,9 @@ mod tests {
         let g2 = GeneratorBuilder::new(Arc::clone(&global))
             .seq(tokio_stream::iter(global.take_seq(5)))
             .build();
-        let gen_group = GeneratorGroup::new_with_count(global.clone(), [(g1, 2), (g2, 3)]);
+        let gen_group = GeneratorGroup::new_with_count([(g1, 2), (g2, 3)]);
         let ret = gen_group.collect().await;
+
         // g1 gens 2 elements, and g2 gens 3, and so on.
         assert_eq!(ret, vec![1, 2, 6, 7, 8, 3, 4, 9, 10, 5]);
     }

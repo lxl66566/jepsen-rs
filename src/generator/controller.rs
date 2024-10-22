@@ -22,6 +22,7 @@ pub enum DelayStrategy {
 }
 
 impl DelayStrategy {
+    /// Delay for a period of time.
     pub async fn delay(&self) {
         match self {
             DelayStrategy::None => {}

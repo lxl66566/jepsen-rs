@@ -80,11 +80,17 @@ pub struct Global<'a, T: Send = Op, ERR: Send = ErrorType> {
     /// the corresponding sender, aka a madsim thread. This thread will try
     /// to receive the `Op` and execute it.
     pub id_set: IdSetType,
-    /// The original raw generator
+
+    /// The original raw generator.
+    ///
+    /// [`Generator`]s could be built by taking a sequence from the [`Global`]
+    /// context.
     pub gen: Mutex<Option<Box<dyn RawGenerator<Item = T> + Send + 'a>>>,
-    /// The start time of the simulation
+
+    /// The start time of the simulation.
     pub start_time: time::Instant,
-    /// The history list
+
+    /// The history list.
     pub history: Mutex<SerializableHistoryList<OpFunctionType, ERR>>,
 }
 

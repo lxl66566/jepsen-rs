@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 use j4rs::{Instance, InvocationArg};
 
-use super::{RawGenerator, GENERATOR_CACHE_SIZE};
+use super::{raw_gen::GENERATOR_CACHE_SIZE, RawGenerator};
 use crate::{
     cljinvoke,
     ffi::{pre_serialize, ToDe},
