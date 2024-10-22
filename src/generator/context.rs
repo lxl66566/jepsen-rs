@@ -91,7 +91,7 @@ pub struct Global<'a, T: Send = Op, ERR: Send = ErrorType> {
     pub start_time: time::Instant,
 
     /// The history list.
-    pub history: Mutex<SerializableHistoryList<OpFunctionType, ERR>>,
+    pub history: Mutex<SerializableHistoryList<OpOrNemesisFuncType, HistoryValue, ERR>>,
 }
 
 impl<'a, T: Send + 'a, ERR: Send> Global<'a, T, ERR> {

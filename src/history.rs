@@ -181,7 +181,7 @@ mod tests {
     use super::*;
     use crate::{
         ffi::{equals_clj, print_clj, read_edn, FromSerde, ToDe},
-        generator::TestOpGen,
+        generator::raw_gen::TestOpGen,
         nemesis::NemesisType,
     };
 

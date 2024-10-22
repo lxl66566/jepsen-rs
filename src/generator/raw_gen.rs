@@ -3,6 +3,10 @@ use std::ops::{AddAssign, RangeFrom};
 
 use log::trace;
 
+use crate::op::{nemesis::OpOrNemesis, Op};
+#[cfg(test)]
+use crate::utils::OverflowingAddRange as _;
+
 /// Cache size for the raw generator. The cache is used for reducing the ffi
 /// function call to the clojure generator.
 pub const GENERATOR_CACHE_SIZE: usize = 200;
@@ -39,6 +43,40 @@ impl RawGenerator for RangeFrom<i32> {
         let temp = self.start;
         self.start.add_assign(1);
         temp
+    }
+}
+
+/// A wrapper that wraps a raw [`Op`] generator to a raw [`OpOrNemesis`]
+/// generator
+#[derive(derive_more::From)]
+pub struct NemesisRawGenWrapper(pub Box<dyn RawGenerator<Item = Op> + Send>);
+
+impl RawGenerator for NemesisRawGenWrapper {
+    type Item = OpOrNemesis;
+    fn gen(&mut self) -> Self::Item {
+        OpOrNemesis::from(self.0.gen())
+    }
+}
+
+/// A raw [`OP`] Generator for testing
+#[cfg(test)]
+#[derive(Default)]
+pub struct TestOpGen {
+    index: usize,
+}
+
+#[cfg(test)]
+/// infinitely generate ops
+impl RawGenerator for TestOpGen {
+    type Item = OpOrNemesis;
+    fn gen(&mut self) -> Self::Item {
+        self.index = self.index.overflowing_add_range(1, 0..3);
+        OpOrNemesis::from(match self.index {
+            0 => Op::Read(1, Some(1)),
+            1 => Op::Write(1, 1),
+            2 => Op::Txn(vec![Op::Read(1, Some(1)), Op::Write(1, 1)]),
+            _ => unreachable!(),
+        })
     }
 }
 

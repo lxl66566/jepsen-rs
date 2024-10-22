@@ -157,7 +157,7 @@ pub trait Check {
     /// Check the history and write history to disk, returns the check result.
     ///
     /// The history will be written to `history.edn` in the output directory.
-    fn check<F: Serialize, ERR: Serialize>(
+    fn check<F: Serialize, V: Serialize, ERR: Serialize>(
         &self,
         history: &SerializableHistoryList<F, V, ERR>,
         option: CheckOption,
@@ -166,9 +166,9 @@ pub trait Check {
 
 /// Impl Check for all checker.
 impl<T: Checker> Check for T {
-    fn check<F: Serialize, ERR: Serialize>(
+    fn check<F: Serialize, V: Serialize, ERR: Serialize>(
         &self,
-        history: &SerializableHistoryList<F, ERR>,
+        history: &SerializableHistoryList<F, V, ERR>,
         option: CheckOption,
     ) -> Result<SerializableCheckResult> {
         init_jvm();

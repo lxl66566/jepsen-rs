@@ -5,10 +5,10 @@ use jepsen_rs::{
     checker::ValidType,
     client::{Client, ElleRwClusterClient, JepsenClient, NemesisClusterClient},
     generator::{
-        controller::GeneratorGroupStrategy, elle_rw::ElleRwGenerator,
-        GeneratorGroup, NemesisRawGenWrapper,
+        controller::GeneratorGroupStrategy, elle_rw::ElleRwGenerator, GeneratorGroup,
+        NemesisRawGenWrapper,
     },
-    nemesis::{implementation::NemesisCluster, NemesisType, ServerId},
+    nemesis::{NemesisType, ServerId},
     op::{nemesis::OpOrNemesis, Op},
 };
 use log::{info, LevelFilter};
@@ -182,11 +182,8 @@ fn intergration_test_with_nemesis() -> Result<()> {
         let g3 = client.new_generator(50);
         let ng = client.new_nemeses([NemesisType::Kill([1, 2].into_iter().collect())]);
         info!("intergration_test: generators created");
-        let gen_g = GeneratorGroup::new_with_count(
-            client.global.clone(),
-            [(g1, 30), (g2, 20), (g3, 20), (ng, 1)],
-        )
-        .with_strategy(GeneratorGroupStrategy::RoundRobin(usize::MAX));
+        let gen_g = GeneratorGroup::new_with_count([(g1, 30), (g2, 20), (g3, 20), (ng, 1)])
+            .with_strategy(GeneratorGroupStrategy::RoundRobin(usize::MAX));
         info!("generator group created");
         let res = client.run(gen_g).await.unwrap_or_else(|e| panic!("{}", e));
         info!("history checked result: {:?}", res);

@@ -6,8 +6,8 @@ mod test {
 
     use crate::{
         generator::{
-            controller::GeneratorGroupStrategy, DelayAsyncIter, Generator, GeneratorBuilder,
-            GeneratorGroup, Global, TestOpGen,
+            controller::GeneratorGroupStrategy, raw_gen::TestOpGen, DelayAsyncIter, Generator,
+            GeneratorBuilder, GeneratorGroup, Global,
         },
         nemesis::NemesisType,
         op::{nemesis::OpOrNemesis, Op},
@@ -20,8 +20,8 @@ mod test {
             .seq(tokio_stream::iter(global.take_seq(2)))
             .build();
         let nemesis = Generator::once(global.clone(), NemesisType::SplitOne(1).into());
-        let group = GeneratorGroup::new(global.clone(), [gen, nemesis])
-            .with_strategy(GeneratorGroupStrategy::Chain);
+        let group =
+            GeneratorGroup::new([gen, nemesis]).with_strategy(GeneratorGroupStrategy::Chain);
         let res = group.collect().await;
         assert_eq!(
             res,
