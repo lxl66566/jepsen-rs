@@ -1,13 +1,5 @@
-use j4rs::Instance;
-use log::{info, trace};
-use serde::Serialize;
-
-use super::{CheckOption, SerializableCheckResult};
-use crate::{
-    ffi::{historify, FromSerde, ToDe},
-    history::SerializableHistoryList,
-    nsinvoke, with_jvm, CljNs, CLOJURE,
-};
+use super::Checker;
+use crate::{with_jvm, CljNs, CLOJURE};
 
 pub struct ElleRwChecker {
     /// The namespace of the generator, default is `elle.rw-register`
@@ -24,21 +16,9 @@ impl Default for ElleRwChecker {
     }
 }
 
-impl super::Check for ElleRwChecker {
-    fn check<F: Serialize, ERR: Serialize>(
-        &self,
-        history: &SerializableHistoryList<F, ERR>,
-        option: CheckOption,
-    ) -> anyhow::Result<SerializableCheckResult> {
-        with_jvm(|_| {
-            let h = historify(Instance::from_ser(history)?)?;
-            trace!("historify done");
-            info!("check with option: {:?}", &option);
-            let op_clj = Instance::from_ser(option)?;
-            let res = nsinvoke!(self.ns, "check", op_clj, h)?;
-            trace!("check done");
-            res.to_de::<SerializableCheckResult>()
-        })
+impl Checker for ElleRwChecker {
+    fn ns(&self) -> &CljNs {
+        &self.ns
     }
 }
 
@@ -46,8 +26,9 @@ impl super::Check for ElleRwChecker {
 mod tests {
     use super::*;
     use crate::{
-        checker::{Check, ConsistencyModel},
-        ffi::read_edn,
+        checker::{Check, CheckOption, ConsistencyModel},
+        ffi::{read_edn, ToDe},
+        history::SerializableHistoryList,
         utils::log_init,
     };
 

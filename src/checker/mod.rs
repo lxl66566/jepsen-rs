@@ -3,10 +3,16 @@ use std::{collections::HashSet, path::PathBuf};
 
 use anyhow::Result;
 use default_struct_builder::DefaultBuilder;
+use j4rs::{Instance, InvocationArg};
+use log::{info, trace};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-use crate::history::SerializableHistoryList;
+use crate::{
+    ffi::{historify, java_to_string, FromSerde, ToDe},
+    history::SerializableHistoryList,
+    init_jvm, CljNs, CLOJURE,
+};
 
 fn default_out_dir() -> PathBuf {
     PathBuf::from("./out")
@@ -140,14 +146,57 @@ pub enum ConsistencyModel {
     StrongReadCommitted,
 }
 
-/// Checker trait
+/// A trait impl to clojure checker.
+pub trait Checker {
+    /// Get the ns of this checker.
+    fn ns(&self) -> &CljNs;
+}
+
+/// A trait that execute the check function.
 pub trait Check {
-    /// The check function, returns a map like `{:valid? true}`
+    /// Check the history and write history to disk, returns the check result.
+    ///
+    /// The history will be written to `history.edn` in the output directory.
     fn check<F: Serialize, ERR: Serialize>(
         &self,
         history: &SerializableHistoryList<F, ERR>,
         option: CheckOption,
     ) -> Result<SerializableCheckResult>;
+}
+
+/// Impl Check for all checker.
+impl<T: Checker> Check for T {
+    fn check<F: Serialize, ERR: Serialize>(
+        &self,
+        history: &SerializableHistoryList<F, ERR>,
+        option: CheckOption,
+    ) -> Result<SerializableCheckResult> {
+        init_jvm();
+        let h = historify(Instance::from_ser(history)?)?;
+        trace!("historify done");
+        info!("check with option: {:?}", &option);
+
+        // save history to output path.
+        // Because the clojure invoke macros needs owned Instances, but the history
+        // Instance needs to be used twice (write to disk and check), we can only invoke
+        // clojure ns manually with [`InvocationArg`].
+
+        let output = option.directory.join("history.edn");
+        std::fs::create_dir_all(output.parent().unwrap()).unwrap();
+        let h_arg = [InvocationArg::from(h)];
+        let s = CLOJURE.var("pr-str")?.invoke(&h_arg)?;
+        std::fs::write(&output, java_to_string(&s)?)?;
+        info!("history saved to `{}`", output.display());
+
+        // check
+        let op_clj = InvocationArg::from(Instance::from_ser(option)?);
+        let res = self
+            .ns()
+            .var("check")?
+            .invoke(&[op_clj, h_arg.into_iter().next().unwrap()])?;
+        trace!("check done");
+        res.to_de::<SerializableCheckResult>()
+    }
 }
 
 #[cfg(test)]
