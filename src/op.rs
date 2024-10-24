@@ -47,11 +47,23 @@ impl From<&Op> for OpFunctionType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, derive_more::From)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum OpOrNemesisFuncType {
     Op(OpFunctionType),
     Nemesis(SerializableNemesisType),
+}
+
+impl From<OpFunctionType> for OpOrNemesisFuncType {
+    fn from(value: OpFunctionType) -> Self {
+        Self::Op(value)
+    }
+}
+
+impl From<SerializableNemesisType> for OpOrNemesisFuncType {
+    fn from(value: SerializableNemesisType) -> Self {
+        Self::Nemesis(value)
+    }
 }
 
 /// A list of [`Op`]s
@@ -162,10 +174,24 @@ pub mod nemesis {
     };
 
     /// A union of [`AllNemesis`] and [`Op`].
-    #[derive(Debug, Clone, PartialEq, derive_more::From)]
+    #[derive(Debug, Clone, PartialEq)]
     pub enum OpOrNemesis {
         Nemesis(AllNemesis),
         Op(Op),
+    }
+
+    // one layer conversion
+
+    impl From<Op> for OpOrNemesis {
+        fn from(value: Op) -> Self {
+            Self::Op(value)
+        }
+    }
+
+    impl From<AllNemesis> for OpOrNemesis {
+        fn from(value: AllNemesis) -> Self {
+            Self::Nemesis(value)
+        }
     }
 
     // two layers conversion

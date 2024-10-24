@@ -48,8 +48,13 @@ impl RawGenerator for RangeFrom<i32> {
 
 /// A wrapper that wraps a raw [`Op`] generator to a raw [`OpOrNemesis`]
 /// generator
-#[derive(derive_more::From)]
 pub struct NemesisRawGenWrapper(pub Box<dyn RawGenerator<Item = Op> + Send>);
+
+impl From<Box<dyn RawGenerator<Item = Op> + Send>> for NemesisRawGenWrapper {
+    fn from(value: Box<dyn RawGenerator<Item = Op> + Send>) -> Self {
+        Self(value)
+    }
+}
 
 impl RawGenerator for NemesisRawGenWrapper {
     type Item = OpOrNemesis;

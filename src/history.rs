@@ -44,13 +44,25 @@ pub struct SerializableHistory<
     pub error: Option<ERR>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, derive_more::From)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum HistoryValue {
     /// A string type is for nemesis discription.
     String(String),
     /// A Op type is for Op generator result.
     Op(Op),
+}
+
+impl From<Op> for HistoryValue {
+    fn from(op: Op) -> Self {
+        Self::Op(op)
+    }
+}
+
+impl From<String> for HistoryValue {
+    fn from(s: String) -> Self {
+        Self::String(s)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

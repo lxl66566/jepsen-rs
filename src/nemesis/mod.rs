@@ -136,10 +136,22 @@ impl From<NetRecord> for NemesisRecord {
 
 /// A Union type of [`NemesisType`] and [`NemesisRecord`]. Nemesis Generator
 /// will generate this.
-#[derive(Debug, Clone, PartialEq, derive_more::From)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AllNemesis {
     Execute(NemesisType),
     Recover(NemesisRecord),
+}
+
+impl From<NemesisType> for AllNemesis {
+    fn from(nemesis_type: NemesisType) -> Self {
+        Self::Execute(nemesis_type)
+    }
+}
+
+impl From<NemesisRecord> for AllNemesis {
+    fn from(nemesis_record: NemesisRecord) -> Self {
+        Self::Recover(nemesis_record)
+    }
 }
 
 impl From<AllNemesis> for String {

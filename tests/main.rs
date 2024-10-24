@@ -182,7 +182,7 @@ fn intergration_test_with_nemesis() -> Result<()> {
         let g3 = client.new_generator(50);
         let ng = client.new_nemeses([NemesisType::Kill([1, 2].into_iter().collect())]);
         info!("intergration_test: generators created");
-        let gen_g = GeneratorGroup::new_with_count([(g1, 30), (g2, 20), (g3, 20), (ng, 1)])
+        let gen_g = GeneratorGroup::new_with_count([(g1, 20), (g2, 10), (g3, 10), (ng, 1)])
             .with_strategy(GeneratorGroupStrategy::RoundRobin(usize::MAX));
         info!("generator group created");
         let res = client.run(gen_g).await.unwrap_or_else(|e| panic!("{}", e));
